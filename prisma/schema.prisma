@@ -1,0 +1,992 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  standard
+  admin
+  editor
+  developer
+}
+
+enum FriendRequestStatus {
+  pending
+  accepted
+  rejected
+}
+
+enum GenreType {
+  book
+  movie
+  game
+}
+
+enum ContentType {
+  book
+  movie
+  game
+  news
+  post
+}
+
+enum MediaType {
+  image
+  video
+}
+
+enum ListItemStatus {
+  planned
+  watched
+  watching
+  rewatching
+  postponed
+  dropped
+}
+
+enum BookStatus {
+  announced
+  writing
+  editing
+  airing
+  published
+  cancelled
+  unknown
+}
+
+enum MovieStatus {
+  announced
+  in_production
+  post_production
+  released
+  ongoing
+  complited
+  cancelled
+  unknown
+}
+
+enum GameStatus {
+  announced
+  in_develope
+  early_access
+  released
+  cancelled
+  unknown
+}
+
+enum MovieType {
+  live_action
+  anime
+  animation
+}
+
+enum PersonCareer {
+  actor
+  director
+  author
+}
+
+enum RoleType {
+  lead
+  supporting
+  cameo
+  extra
+  unknown
+}
+
+enum ChatParticipantRole {
+  standard
+  admin
+}
+
+enum AgeRating {
+  g // подходит для всех возрастов
+  pg // некоторый материал может быть не подходящим для детей
+  pg_13 // некоторый материал может быть неуместным для детей младше 13 лет
+  r // для лиц младше 17 лет требуется сопровождение родителей или взрослого опекуна
+  nc_17 // лица младше 17 лет не допускаются
+  unknown // информация о рейтинге недоступна или не применима
+}
+
+enum CollectionVisibility {
+  private
+  public
+  friendsOnly
+  specificFriends
+  linkOnly
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLogin    DateTime @default(now())
+  lastActivity DateTime @default(now())
+  active       Boolean  @default(true)
+
+  email        String   @unique
+  passwordHash String
+  avatarPath   String?
+  username     String   @unique
+  profileName  String
+  role         UserRole @default(standard)
+
+  loginAttempts LoginAttempt[]
+
+  friends                User[]            @relation("Friendship")
+  friendOf               User[]            @relation("Friendship")
+  friendRequests         FriendRequest[]   @relation("FriendRequests")
+  receivedRequests       FriendRequest[]   @relation("ReceivedRequests")
+  Collections            Collection[]
+  RefreshTokens          RefreshToken[]
+  Post                   Post[]
+  News                   News[]
+  ownedChats             Chat[]            @relation("OwnerChats")
+  participantChats       ChatParticipant[]
+  BookListItem           BookListItem[]
+  MovieListItem          MovieListItem[]
+  GameListItem           GameListItem[]
+  BookComment            BookComment[]
+  MovieComment           MovieComment[]
+  GameComment            GameComment[]
+  PostComment            PostComment[]
+  NewsComment            NewsComment[]
+  sentDirectMessages     DirectMessage[]   @relation("SentDirectMessages")
+  receivedDirectMessages DirectMessage[]   @relation("ReceivedDirectMessages")
+  sentChatMessages       ChatMessage[]     @relation("SentChatMessages")
+}
+
+model LoginAttempt {
+  id              Int       @id @default(autoincrement())
+  ipAddress       String
+  attemptCount    Int       @default(0)
+  lastAttemptTime DateTime  @default(now())
+  blockEndTime    DateTime?
+  lockMultiplier  Int       @default(1)
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  @@index([ipAddress])
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  active    Boolean  @default(true)
+
+  token String @unique
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+}
+
+model FriendRequest {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  status String @default("PENDING")
+
+  sender     User @relation("FriendRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId   Int
+  receiver   User @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+  receiverId Int
+}
+
+model DirectMessage {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  text     String
+  sender   User           @relation("SentDirectMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User           @relation("ReceivedDirectMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  parent   DirectMessage? @relation("MessageReplies", fields: [parentId], references: [id])
+
+  senderId   Int
+  receiverId Int
+  parentId   Int?
+
+  replies DirectMessage[] @relation("MessageReplies")
+}
+
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  text   String
+  sender User         @relation("SentChatMessages", fields: [senderId], references: [id])
+  chat   Chat         @relation(fields: [chatId], references: [id])
+  parent ChatMessage? @relation("MessageReplies", fields: [parentId], references: [id])
+
+  senderId Int
+  chatId   Int
+  parentId Int
+
+  replies ChatMessage[] @relation("MessageReplies")
+}
+
+model Chat {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  title       String @default("Chat")
+  description String @default("")
+  posterPath  String @default("")
+  owner       User   @relation("OwnerChats", fields: [ownerId], references: [id])
+
+  ownerId Int
+
+  participants ChatParticipant[]
+  ChatMessage  ChatMessage[]
+}
+
+model ChatParticipant {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  label String              @default("")
+  role  ChatParticipantRole
+
+  chat   Chat @relation(fields: [chatId], references: [id])
+  chatId Int
+  user   User @relation(fields: [userId], references: [id])
+  userId Int
+
+  @@unique([chatId, userId])
+}
+
+model Franchise {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String
+  description String?
+  logoPath    String?
+
+  BookFranchise  BookFranchise[]
+  MovieFranchise MovieFranchise[]
+  GameFranchise  GameFranchise[]
+}
+
+model Genre {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String      @unique
+  description String?
+  genreTypes  GenreType[]
+
+  books  Book[]
+  movies Movie[]
+  games  Game[]
+}
+
+model Theme {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String  @unique
+  description String?
+
+  books  Book[]
+  movies Movie[]
+  games  Game[]
+}
+
+model Person {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String
+  photoPath   String?
+  description String?
+  birthday    DateTime?
+  country     String?
+  career      PersonCareer[] // Список карьер (актера, режиссера, писателя и т.д.)
+  directed    Movie[]        @relation("DirectorsMovies")
+  books       Book[]         @relation("PersonBooks")
+  MovieCast   MovieCast[]
+  BookCast    BookCast[]
+  GameCast    GameCast[]
+}
+
+model Character {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String
+  description String?
+  photoPath   String?
+
+  MovieCast MovieCast[]
+  BookCast  BookCast[]
+  GameCast  GameCast[]
+}
+
+model BookCast {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  roleName      String?
+  roleActor     String?
+  rolePhotoPath String?
+  roleType      RoleType @default(unknown)
+
+  book      Book       @relation(fields: [bookId], references: [id])
+  character Character? @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  actor     Person?    @relation(fields: [actorId], references: [id])
+
+  bookId      Int
+  characterId Int?
+  actorId     Int?
+}
+
+model MovieCast {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  roleName      String?
+  roleActor     String?
+  rolePhotoPath String?
+  roleType      RoleType @default(unknown)
+
+  movie     Movie      @relation(fields: [movieId], references: [id])
+  character Character? @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  actor     Person?    @relation(fields: [actorId], references: [id])
+
+  movieId     Int
+  characterId Int?
+  actorId     Int?
+}
+
+model GameCast {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  roleName      String?
+  roleActor     String?
+  rolePhotoPath String?
+  roleType      RoleType @default(unknown)
+
+  game      Game       @relation(fields: [gameId], references: [id])
+  character Character? @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  actor     Person?    @relation(fields: [actorId], references: [id])
+
+  gameId      Int
+  characterId Int?
+  actorId     Int?
+}
+
+model Book {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  visitCount Int      @default(0)
+
+  title             String
+  description       String?
+  authors           Person[]        @relation("PersonBooks")
+  posterPath        String?
+  release           DateTime?
+  status            BookStatus      @default(unknown)
+  readingHoursCount Int?
+  ageRating         AgeRating       @default(unknown)
+  rating            Float?
+  genres            Genre[]
+  themes            Theme[]
+  BookFranchise     BookFranchise[]
+  BookCast          BookCast[]
+
+  links        Json?
+  translations Json?
+
+  BookListItem   BookListItem[]
+  CollectionBook CollectionBook[]
+  SimilarBooks   SimilarBook[]    @relation("SimilarBooks")
+  SimilarToBooks SimilarBook[]    @relation("SimilarToBooks")
+  BookComment    BookComment[]
+}
+
+model BookComment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  text      String
+
+  user   User         @relation(fields: [userId], references: [id])
+  book   Book?        @relation(fields: [bookId], references: [id], onDelete: Cascade, map: "Comment_Book_fkey")
+  parent BookComment? @relation("CommentReplies", fields: [parentId], references: [id])
+
+  userId   Int
+  bookId   Int
+  parentId Int?
+
+  replies BookComment[] @relation("CommentReplies")
+}
+
+model SimilarBook {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  sourceBook Book @relation("SimilarBooks", fields: [sourceBookId], references: [id], onDelete: Cascade)
+  targetBook Book @relation("SimilarToBooks", fields: [targetBookId], references: [id], onDelete: Cascade)
+
+  sourceBookId Int
+  targetBookId Int
+}
+
+model Movie {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
+  visitCount Int      @default(0)
+
+  title          String
+  description    String?
+  MovieType      MovieType        @default(live_action)
+  posterPath     String?
+  directors      Person[]         @relation("DirectorsMovies")
+  release        DateTime?
+  status         MovieStatus      @default(unknown)
+  duration       Int?
+  isSeries       Boolean          @default(false)
+  seriesCount    Int              @default(1)
+  ageRating      AgeRating        @default(unknown)
+  rating         Float?
+  genres         Genre[]
+  themes         Theme[]
+  studios        Studio[]         @relation("MovieStudios")
+  MovieFranchise MovieFranchise[]
+  MovieCast      MovieCast[]
+
+  links        Json?
+  translations Json?
+
+  MovieListItem   MovieListItem[]
+  CollectionMovie CollectionMovie[]
+  SimilarMovie    SimilarMovie[]    @relation("SimilarMovies")
+  SimilarToMovie  SimilarMovie[]    @relation("SimilarToMovies")
+  MovieComment    MovieComment[]
+}
+
+model Studio {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String
+  description String
+  logoPath    String?
+  country     String?
+
+  movies Movie[] @relation("MovieStudios")
+}
+
+model SimilarMovie {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  sourceMovie Movie @relation("SimilarMovies", fields: [sourceMovieId], references: [id], onDelete: Cascade)
+  targetMovie Movie @relation("SimilarToMovies", fields: [targetMovieId], references: [id], onDelete: Cascade)
+
+  sourceMovieId Int
+  targetMovieId Int
+}
+
+model MovieComment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  text      String
+
+  user   User          @relation(fields: [userId], references: [id])
+  movie  Movie?        @relation(fields: [movieId], references: [id], onDelete: Cascade, map: "Comment_Movie_fkey")
+  parent MovieComment? @relation("CommentReplies", fields: [parentId], references: [id])
+
+  userId   Int
+  movieId  Int
+  parentId Int?
+
+  replies MovieComment[] @relation("CommentReplies")
+}
+
+model Game {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
+  visitCount Int      @default(0)
+
+  title         String
+  description   String?
+  posterPath    String?
+  developers    Developer[]
+  release       DateTime?
+  status        GameStatus      @default(unknown)
+  ageRating     AgeRating       @default(unknown)
+  rating        Float?
+  genres        Genre[]
+  themes        Theme[]
+  platforms     Platform[]
+  publishers    Publisher[]
+  GameFranchise GameFranchise[]
+  GameCast      GameCast[]
+
+  links        Json?
+  translations Json?
+
+  GameListItem   GameListItem[]
+  CollectionGame CollectionGame[]
+  SimilarGames   SimilarGame[]    @relation("SimilarGames")
+  SimilarToGames SimilarGame[]    @relation("SimilarToGames")
+  GameComment    GameComment[]
+}
+
+model Developer {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String
+  description String? @default("")
+  logoPath    String?
+
+  games Game[]
+}
+
+model Publisher {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String
+  description String? @default("")
+  logoPath    String?
+
+  games Game[]
+}
+
+model Platform {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  name        String
+  description String? @default("")
+  logoPath    String?
+
+  games Game[]
+}
+
+model SimilarGame {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  sourceGame Game @relation("SimilarGames", fields: [sourceGameId], references: [id], onDelete: Cascade)
+  targetGame Game @relation("SimilarToGames", fields: [targetGameId], references: [id], onDelete: Cascade)
+
+  sourceGameId Int
+  targetGameId Int
+}
+
+model GameComment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  text      String
+
+  user   User         @relation(fields: [userId], references: [id])
+  game   Game?        @relation(fields: [gameId], references: [id], onDelete: Cascade, map: "Comment_Game_fkey")
+  parent GameComment? @relation("CommentReplies", fields: [parentId], references: [id])
+
+  userId   Int
+  gameId   Int
+  parentId Int?
+
+  replies GameComment[] @relation("CommentReplies")
+}
+
+model History {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  genreType GenreType
+  text      String
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model BookListItem {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  status      ListItemStatus @default(planned)
+  note        String?
+  repeatCount Int?           @default(0)
+  current     Int            @default(0) // текущая страница
+  maxPages    Int            @default(1) // максимальная страница
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id])
+
+  userId Int
+  bookId Int
+
+  rating BookListItemRating?
+  review BookListItemReview?
+
+  @@id([userId, bookId])
+}
+
+model MovieListItem {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  status      ListItemStatus @default(planned)
+  note        String?
+  repeatCount Int?           @default(0)
+  current     Int            @default(0) // серия
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id])
+
+  userId  Int
+  movieId Int
+
+  rating MovieListItemRating?
+  review MovieListItemReview?
+
+  @@id([userId, movieId])
+}
+
+model GameListItem {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  status      ListItemStatus @default(planned)
+  note        String?
+  repeatCount Int?           @default(0)
+  current     Int            @default(0) // время прохождения в часах
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id])
+
+  userId Int
+  gameId Int
+
+  rating GameListItemRating?
+  review GameListItemReview?
+
+  @@id([userId, gameId])
+}
+
+model BookListItemRating {
+  id        Int      @id @default(autoincrement())
+  rating    Int // 1-100
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  bookListItem BookListItem @relation(fields: [userId, bookId], references: [userId, bookId])
+  userId       Int
+  bookId       Int
+
+  @@unique([userId, bookId])
+}
+
+model MovieListItemRating {
+  id        Int      @id @default(autoincrement())
+  rating    Int // 1-100
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  movieListItem MovieListItem @relation(fields: [userId, movieId], references: [userId, movieId])
+  userId        Int
+  movieId       Int
+
+  @@unique([userId, movieId])
+}
+
+model GameListItemRating {
+  id        Int      @id @default(autoincrement())
+  rating    Int // 1-100
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  gameListItem GameListItem @relation(fields: [userId, gameId], references: [userId, gameId])
+  userId       Int
+  gameId       Int
+
+  @@unique([userId, gameId])
+}
+
+model BookListItemReview {
+  id        Int      @id @default(autoincrement())
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  bookListItem BookListItem @relation(fields: [userId, bookId], references: [userId, bookId])
+  userId       Int
+  bookId       Int
+
+  @@unique([userId, bookId])
+}
+
+model MovieListItemReview {
+  id        Int      @id @default(autoincrement())
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  movieListItem MovieListItem @relation(fields: [userId, movieId], references: [userId, movieId])
+  userId        Int
+  movieId       Int
+
+  @@unique([userId, movieId])
+}
+
+model GameListItemReview {
+  id        Int      @id @default(autoincrement())
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  gameListItem GameListItem @relation(fields: [userId, gameId], references: [userId, gameId])
+  userId       Int
+  gameId       Int
+
+  @@unique([userId, gameId])
+}
+
+model BookFranchise {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  franchise Franchise @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  book      Book      @relation(fields: [bookId], references: [id])
+
+  franchiseId Int
+  bookId      Int
+
+  @@id([franchiseId, bookId])
+}
+
+model MovieFranchise {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  franchise Franchise @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  movie     Movie     @relation(fields: [movieId], references: [id])
+
+  franchiseId Int
+  movieId     Int
+
+  @@id([franchiseId, movieId])
+}
+
+model GameFranchise {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  franchise Franchise @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id])
+
+  franchiseId Int
+  gameId      Int
+
+  @@id([franchiseId, gameId])
+}
+
+model Collection {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  visitCount Int      @default(0)
+
+  posterPath  String?
+  name        String
+  description String?
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  visibility  CollectionVisibility @default(public)
+
+  books  CollectionBook[]
+  movies CollectionMovie[]
+  games  CollectionGame[]
+}
+
+model CollectionBook {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  book       Book       @relation(fields: [bookId], references: [id])
+
+  collectionId Int
+  bookId       Int
+
+  @@id([collectionId, bookId])
+}
+
+model CollectionMovie {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  collectionId Int
+
+  movie   Movie @relation(fields: [movieId], references: [id])
+  movieId Int
+
+  @@id([collectionId, movieId])
+}
+
+model CollectionGame {
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  game       Game       @relation(fields: [gameId], references: [id])
+
+  gameId       Int
+  collectionId Int
+
+  @@id([collectionId, gameId])
+}
+
+model Post {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  visitCount Int      @default(0)
+
+  title      String
+  source     Json
+  posterPath String
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  PostComment PostComment[]
+}
+
+model PostComment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  text      String
+
+  user   User         @relation(fields: [userId], references: [id])
+  post   Post?        @relation(fields: [postId], references: [id], onDelete: Cascade, map: "Comment_Post_fkey")
+  parent PostComment? @relation("CommentReplies", fields: [parentId], references: [id])
+
+  userId   Int
+  postId   Int
+  parentId Int?
+
+  replies PostComment[] @relation("CommentReplies")
+}
+
+model News {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  visitCount Int      @default(0)
+
+  title      String
+  source     Json
+  posterPath String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userId      Int
+  NewsComment NewsComment[]
+}
+
+model NewsComment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  text      String
+
+  user   User         @relation(fields: [userId], references: [id])
+  news   News?        @relation(fields: [newsId], references: [id], onDelete: Cascade, map: "Comment_News_fkey")
+  parent NewsComment? @relation("CommentReplies", fields: [parentId], references: [id])
+
+  userId   Int
+  newsId   Int
+  parentId Int?
+
+  replies NewsComment[] @relation("CommentReplies")
+}
+
+model Dumb {
+  id   Int         @id
+  type ContentType
+}
+
+model Article {
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  id         Int       @id @default(autoincrement())
+  title      String
+  sections   Section[]
+  posterPath String
+}
+
+model Section {
+  id              Int              @id @default(autoincrement())
+  articleId       Int
+  article         Article          @relation(fields: [articleId], references: [id])
+  backgroundColor String? // Цвет фона секции (опционально)
+  elements        ArticleElement[] // Секция содержит элементы
+  order           Int // Порядковый номер секции в статье
+}
+
+model ArticleElement {
+  id          Int         @id @default(autoincrement())
+  sectionId   Int
+  section     Section     @relation(fields: [sectionId], references: [id])
+  order       Int // Порядковый номер элемента в секции
+  elementType ElementType // Тип элемента
+  content     String? // Общее поле для контента (заголовки, подзаголовки, текст)
+  posterPath  String? // URL изображения для типа IMAGE
+  caption     String? // Подпись для изображения
+}
+
+enum ElementType {
+  TITLE
+  SUBTITLE
+  TEXT
+  IMAGE
+  SLIDER
+  BLOCK
+}
